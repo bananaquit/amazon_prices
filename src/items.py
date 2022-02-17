@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import typing
 import pandas as pd
 
+from util import get_abs_url
 pd.NA
 
 class data_pl(Item):
@@ -32,12 +33,16 @@ class Item_base:
         #for variable in [v for v in dir(self) if not v.startswith("_")]:
         for variable in list(filter(lambda a: not a.startswith("_"), dir(self))):
             var_value = getattr(self, variable)
-            feed_dict[variable] = self._processors_map[variable](var_value) if var_value is not None else "pd.NA"
+            if variable in self._processors_map:
+                feed_dict[variable] = self._processors_map[variable](var_value) if var_value is not None else "pd.NA"
+            else:
+                feed_dict[variable] = var_value
         
         return feed_dict 
 
 @dataclass
 class Page_item(Item_base):
+    url: typing.AnyStr
     description: typing.Any
     rate: typing.Any
     votes_number: typing.Any
@@ -55,6 +60,7 @@ class Page_item(Item_base):
     
 @dataclass
 class List_item(Item_base):
+    url: typing.AnyStr
     description: typing.Any
     rate: typing.Any
     votes_number: typing.Any

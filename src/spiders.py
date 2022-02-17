@@ -3,7 +3,6 @@ import os
 from shutil import which
 import logging
 import scrapy
-from scrapy.crawler import CrawlerProcess
 from scrapy_selenium import SeleniumRequest
 
 #from scrapy.loader import ItemLoader # https://docs.scrapy.org/en/latest/topics/loaders.html
@@ -15,7 +14,6 @@ from selenium import webdriver # https://stackoverflow.com/questions/17975471/se
 #from selenium.webdriver.remote.remote_connection import LOGGER
 #LOGGER.setLevel(logging.ERROR)
 
-from pprint import pprint
 from dataclasses import dataclass
 from typing import Any, ClassVar, Dict, Callable, List
 import typing
@@ -33,31 +31,12 @@ from scrapy.exporters import CsvItemExporter, JsonItemExporter
 #!        logger.setLevel(log_level)
 
 import pandas as pd
-
-def get_abs_urls(rel_urls: list, domain = "https://www.amazon.com"):
-    check_list = list(map(lambda url: domain in url, rel_urls))
-    
-    if not all(check_list):
-        return list(map(lambda url: os.path.join(domain, url), rel_urls))
-    elif any(check_list):
-        raise ValueError("All urls must be relative or all must be absolute.")
-    
-    scrapy.Spider.logger.info("All urls are already absolute.")
-    #logging.info("All urls are already absolute.")
-    
-    return rel_urls
-
-def get_abs_url(rel_url: str, domain: str = "https://www.amazon.com"):
-    if rel_url.startswith('/') ^ domain.endswith('/'):
-        return domain + rel_url
-    
-    return os.path.join(domain, rel_url)
-
-
-
+from util import *
 class AmazonSpider_Base(scrapy.Spider):
     
-    def __init__(self, *args, **kwargs):
+    def __init__(self, amazon_start_urls: list, max_page_number: int, *args, **kwargs):
+        self.start_urls = amazon_start_urls
+        self.max_page = max_page_number - 1 if (max_page_number > 0) else float('inf')
         
         self.__df = None
         self._init_df()
@@ -100,47 +79,17 @@ class AmazonSpider_Base(scrapy.Spider):
         
 
     def parse(self, response):
+        if self.page_counter > self.max_page:
+            return None
                 
-        #div_items = response.css("div.s-result-item").getall()
-        #print(len(div_items))
         #@ div_items = response.xpath('//div[@class="sg-col-4-of-12 s-result-item s-asin sg-col-4-of-16 sg-col s-widget-spacing-small sg-col-4-of-20"]').getall()
         div_items = response.xpath('//div[contains(@class, "s-result-item") and contains(@class, "s-asin")]')
         
         yield from self.continue_parsing(div_items)
     
-        """
-        pprint(div_items)
-        df = pd.DataFrame({"description": [],
-                             "rating": [],
-                             "votes": [],
-                             "price": []})
         
-        for item in div_items:
-            df = df.append(self.extract_data_from_list(item), ignore_index = True)
-            continue
-        
-        
-        
-        
-        
-        
-            page_url = item.xpath(".//a[contains(@class, 'a-link-normal')]/@href").get()
-            #@page_url2 = item.xpath("./descendant::a[contains(@class, 'a-link-normal')]/@href").getall()
-        
-            page_url = get_abs_url(page_url)
-            
-            yield SeleniumRequest(url = page_url,
-                                  callback = self.parse_item,
-                                  cookies = None,
-                                  dont_filter = True)
-        
-        print(df)
-        """
-    
-        if self.page_counter > 3:
-            return None
         # Following next page of items
-        if ( (next_page_url := response.xpath("//a[contains(@class, 's-pagination-next')]/@href").get()) is not None ):
+        if ( next_page_url := response.xpath("//a[contains(@class, 's-pagination-next')]/@href").get() ):
             self.page_counter += 1
             next_page_url = get_abs_url(next_page_url)
             
@@ -177,9 +126,8 @@ class AmazonSpider_pp(AmazonSpider_Base):
     """
     Spider for data extraction from each product page.
     """
-    def __init__(self, amazon_start_urls, *args, **kwargs):
-        self.custom_lambdas
-        super(AmazonSpider_Base, self).__init__(amazon_start_urls, *args, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super(AmazonSpider_Base, self).__init__(*args, **kwargs)
     
     def _init_df(self):
         self.__df = pd.DataFrame({"description": [],
@@ -212,7 +160,8 @@ class AmazonSpider_pp(AmazonSpider_Base):
 #
         #availability = str(response.xpath('//div[@id="availability"]/span/text()')).strip().lower()
         #availability = "in stock" in availability
-        return Page_item(description = response.xpath('//span[@id="productTitle"]/text()').get(),
+        return Page_item(url = response.url,
+                         description = response.xpath('//span[@id="productTitle"]/text()').get(),
                          rate = response.xpath('//span[@id="acrPopover"]/@title').get(),
                          votes_number = response.xpath('//span[@id="acrCustomerReviewText"]/text()').get(),
                          price = response.xpath('//span[@id="price_inside_buybox"]/text()').get(),
@@ -232,8 +181,8 @@ class AmazonSpider_pl(AmazonSpider_Base):
     """
     Spider for data extraction directly from list items page.
     """
-    def __init__(self, amazon_start_urls, *args, **kwargs):
-        self.start_urls = amazon_start_urls
+    def __init__(self, *args, **kwargs):
+        #?self.start_urls = amazon_start_urls
         super(AmazonSpider_pl, self).__init__(*args, **kwargs)
         
     def _init_df(self):
@@ -249,68 +198,20 @@ class AmazonSpider_pl(AmazonSpider_Base):
             #?self.__df = self.__df.append(self.extract_data_from_plist(item), ignore_index = True)     
             #?yields = self.extract_data_from_plist(item)
         
-        #print(self.__df)
-        
         return None
     
     def extract_data_from_plist(self, selector: scrapy.Selector) -> pd.DataFrame:
         """
         Extracts data available from products list, without opening each product page.
         
-        Gets description, rating, votes (number of) and price
+        Gets description, rating, number of votes and price
         """
         
-        return List_item(selector.xpath(".//span[contains(@class, 'a-size-base-plus')]/text( )").get(),
-                         *selector.xpath(".//div[@class='a-row a-size-small']/span/@aria-label").getall()[:2],
+        rate_and_votes = selector.xpath(".//div[@class='a-row a-size-small']/span/@aria-label").getall()
+        rate_and_votes = rate_and_votes[:2] if len(rate_and_votes) > 1 else [None]*2
+        
+        
+        return List_item(get_abs_url(selector.xpath(".//a[contains(@class, 'a-link-normal')]/@href").get()),
+                         selector.xpath(".//span[contains(@class, 'a-size-base-plus')]/text()").get(),
+                         *rate_and_votes,
                          selector.xpath(".//span[@class='a-price']/span[@class='a-offscreen']/text()").get())()
-        
-        if ((description := selector.xpath(".//span[contains(@class, 'a-size-base-plus')]/text( )").get()) == None):
-            description = pd.NA
-            
-        try:
-            rating_str, n_votes = selector.xpath(".//div[@class='a-row a-size-small']/span/@aria-label").getall()
-        except:
-            rating, n_votes = pd.NA, pd.NA
-        else:
-            #! rating_str = rating_str.replace(" out of ","/")
-            rating = float(rating_str.split(" out of ")[0])
-            n_votes = float(n_votes.replace(",", "."))
-        
-        if ((price := selector.xpath(".//span[@class='a-price']/span[@class='a-offscreen']/text()").get()) != None):
-            price = float(price.replace("$", ""))
-        else:
-            price = pd.NA
-        
-            
-        #print(description, rating, n_votes, price)
-        return pd.DataFrame({"description": [description],
-                             "rating": [rating],
-                             "votes": [n_votes],
-                             "price": [price]})
-        
-        #return {"description": description,
-        #        "rating": rating,
-        #        "votes": n_votes,
-        #        "price": price}
-            
-def main():
-
-    settings_selenium = {"FEEDS": {"items.json": {"format": "json"}}, # https://docs.scrapy.org/en/latest/topics/feed-exports.html
-                         "SELENIUM_DRIVER_NAME": "firefox",
-                         "SELENIUM_DRIVER_EXECUTABLE_PATH": which("geckodriver"),
-                         "SELENIUM_DRIVER_ARGUMENTS": ['-headless'], # '--headless' if using chrome instead of firefox
-                         "DOWNLOADER_MIDDLEWARES": {"scrapy_selenium.SeleniumMiddleware": 800},
-                         "LOG_LEVEL": "ERROR"}
-        
-    process = CrawlerProcess(settings = settings_selenium)
-
-    process.crawl(AmazonSpider_pl,
-                  ["https://www.amazon.com/s?rh=n%3A16225007011&fs=true&ref=lp_16225007011_sar"],
-                  "amazon_crawl")
-    #process.crawl(spider2)
-    #...
-    
-    process.start()
-
-if __name__ == "__main__":
-    main()
