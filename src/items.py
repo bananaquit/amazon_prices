@@ -67,13 +67,15 @@ class List_item(Item_base):
     price: typing.Any
     
     _processors_map: typing.ClassVar[typing.Dict[str, typing.Callable]] = {"description": lambda a: str(a),
-                                                                           "rate": lambda a: float(str(a).split(" out of ")[0]),
+                                                                           #"rate": lambda a: float(str(a).split(" out of ")[0]),
+                                                                           "rate": lambda a: float(str(a).replace(",", ".").split(" de ")[0]),
                                                                            "votes_number": lambda a: float(str(a).replace(",", '.')),
-                                                                           "price": lambda a: float(str(a).replace("$", ""))}
+                                                                           "price": lambda a: float(str(a.replace("\xa0", "")).replace(".", "").replace("R", "").replace("$", "").replace(",", "."))}
     
     def __post_init__(self):
         pass
-    
+
+
 #!a = Page_item("super fast ssd", "  87 out of 98.1   ", "123,12 votes pos", "87.12", " in stock ")
 #!print(a())
 #!

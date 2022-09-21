@@ -1,5 +1,5 @@
 import os
-
+import scrapy
 
 def get_abs_urls(rel_urls: list, domain = "https://www.amazon.com"):
     check_list = list(map(lambda url: domain in url, rel_urls))

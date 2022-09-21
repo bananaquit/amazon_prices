@@ -91,7 +91,7 @@ class AmazonSpider_Base(scrapy.Spider):
         # Following next page of items
         if ( next_page_url := response.xpath("//a[contains(@class, 's-pagination-next')]/@href").get() ):
             self.page_counter += 1
-            next_page_url = get_abs_url(next_page_url)
+            next_page_url = get_abs_url(next_page_url, "https://www.amazon.com.br")
             
             yield SeleniumRequest(url = next_page_url,
                                   callback = self.parse,
@@ -142,7 +142,7 @@ class AmazonSpider_pp(AmazonSpider_Base):
             page_url = item.xpath(".//a[contains(@class, 'a-link-normal')]/@href").get()
             #@page_url2 = item.xpath("./descendant::a[contains(@class, 'a-link-normal')]/@href").getall()
         
-            page_url = get_abs_url(page_url)
+            page_url = get_abs_url(page_url, "https://www.amazon.com.br")
             
             yield SeleniumRequest(url = page_url,
                                   callback = self.parse_product_page,
@@ -211,7 +211,7 @@ class AmazonSpider_pl(AmazonSpider_Base):
         rate_and_votes = rate_and_votes[:2] if len(rate_and_votes) > 1 else [None]*2
         
         
-        return List_item(get_abs_url(selector.xpath(".//a[contains(@class, 'a-link-normal')]/@href").get()),
+        return List_item(get_abs_url(selector.xpath(".//a[contains(@class, 'a-link-normal')]/@href").get(), "https://www.amazon.com.br"),
                          selector.xpath(".//span[contains(@class, 'a-size-base-plus')]/text()").get(),
                          *rate_and_votes,
                          selector.xpath(".//span[@class='a-price']/span[@class='a-offscreen']/text()").get())()
